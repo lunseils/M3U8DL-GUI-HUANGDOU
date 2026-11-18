@@ -84,8 +84,10 @@ internal static class Tests
         var grid = (DataGridView)GetField(f, "grid");
         grid.Rows[0].Cells[2].Value = "100%";
         grid.Rows[1].Cells[2].Value = "43.5%";
-        grid.Rows[0].Cells[3].Value = "1.28 GB";
-        grid.Rows[1].Cells[3].Value = "612 MB";
+        grid.Rows[1].Cells[3].Value = "1.28 MB/s";
+        grid.Rows[1].Cells[3].Style.ForeColor = Theme.Primary;
+        grid.Rows[0].Cells[4].Value = "1.28 GB";
+        grid.Rows[1].Cells[4].Value = "612 MB";
         grid.Rows[1].Selected = true;
 
         Shot(f, Path.Combine(dir, "01_main.png"));

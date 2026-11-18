@@ -159,15 +159,18 @@ internal sealed partial class MainForm : Form
         try
         {
             var r = grid.Rows[row];
-            r.Cells[0].Value = t.Name;
-            r.Cells[0].ToolTipText = t.Url;
-            r.Cells[1].Value = t.Status;
-            r.Cells[1].Style.ForeColor = StatusColor(t.Status);
-            r.Cells[2].Value = t.Status == "完成" ? "100%" : "—";
-            r.Cells[2].Style.ForeColor = t.Status == "完成" ? Theme.Done : Theme.Muted;
-            r.Cells[2].Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            r.Cells[3].Value = "—";
-            r.Cells[3].Style.Alignment = DataGridViewContentAlignment.MiddleRight;
+            r.Cells[ColName].Value = t.Name;
+            r.Cells[ColName].ToolTipText = t.Url;
+            r.Cells[ColStatus].Value = t.Status;
+            r.Cells[ColStatus].Style.ForeColor = StatusColor(t.Status);
+            r.Cells[ColProgress].Value = t.Status == "完成" ? "100%" : "—";
+            r.Cells[ColProgress].Style.ForeColor = t.Status == "完成" ? Theme.Done : Theme.Muted;
+            r.Cells[ColProgress].Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            r.Cells[ColSpeed].Value = "—";
+            r.Cells[ColSpeed].Style.ForeColor = Theme.Muted;
+            r.Cells[ColSpeed].Style.Alignment = DataGridViewContentAlignment.MiddleRight;
+            r.Cells[ColSize].Value = "—";
+            r.Cells[ColSize].Style.Alignment = DataGridViewContentAlignment.MiddleRight;
         }
         finally { updating = false; }
     }
@@ -215,6 +218,7 @@ internal sealed partial class MainForm : Form
             batchRows.Remove(id);
             // 令牌直接作废：在途的引擎回调经 OwnsRow 判空后会自行丢弃，不会写到别人的行上
             lock (rowLock) rowToken.Remove(id);
+            lock (queueLock) speeds.Remove(id);   // 否则底部「总速度」会把已删任务的速率一直加着
         }
         SaveTasks();
         UpdateQueueStatusLabel();
@@ -235,7 +239,7 @@ internal sealed partial class MainForm : Form
         try
         {
             grid.Rows.Clear();
-            lock (queueLock) queue.Clear();
+            lock (queueLock) { queue.Clear(); speeds.Clear(); }
             batchRows.Clear();
             lock (rowLock) rowToken.Clear();
         }
@@ -267,19 +271,21 @@ internal sealed partial class MainForm : Form
             queue.Insert(target, task);
         }
 
-        // 视图：把整行 4 个单元格的内容与配色搬到目标位置（不动模型，模型已移好）
+        // 视图：把整行各单元格的内容与配色搬到目标位置（不动模型，模型已移好）。
+        // 列数用 grid.Columns.Count 而非常量，将来再加列不会漏搬一列。
+        var cols = grid.Columns.Count;
         updating = true;
         try
         {
-            var backup = new (object? Value, Color Fore, DataGridViewContentAlignment Align, string Tip)[4];
-            for (var c = 0; c < 4; c++)
+            var backup = new (object? Value, Color Fore, DataGridViewContentAlignment Align, string Tip)[cols];
+            for (var c = 0; c < cols; c++)
             {
                 var cell = grid.Rows[row].Cells[c];
                 backup[c] = (cell.Value, cell.Style.ForeColor, cell.Style.Alignment, cell.ToolTipText);
             }
             grid.Rows.RemoveAt(row);
             grid.Rows.Insert(target, 1);
-            for (var c = 0; c < 4; c++)
+            for (var c = 0; c < cols; c++)
             {
                 var cell = grid.Rows[target].Cells[c];
                 cell.Value = backup[c].Value;
@@ -289,7 +295,7 @@ internal sealed partial class MainForm : Form
             }
             grid.ClearSelection();
             grid.Rows[target].Selected = true;
-            grid.CurrentCell = grid.Rows[target].Cells[0];
+            grid.CurrentCell = grid.Rows[target].Cells[ColName];
         }
         finally { updating = false; }
         AppendLog($"↕ 任务已移动到第 {target + 1} 位");

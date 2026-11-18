@@ -58,7 +58,7 @@ internal static class ShotProgram
             using (var f = new MainForm())
                 RunCapture(f,
                 [
-                    (null, "02_filled.png"),
+                    (DemoSpeedRow, "02_filled.png"),
                     (x =>
                     {
                         var open = typeof(MainForm).GetMethod("OpenSettings", BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -116,6 +116,25 @@ internal static class ShotProgram
             g.CopyFromScreen(rect.Location, Point.Empty, rect.Size);
         bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
         Console.WriteLine($"SAVED {path} ({rect.Width}x{rect.Height})");
+    }
+
+    /// <summary>
+    /// 满态演示数据：给「下载中」那一行填上进度 / 速率 / 大小 —— 否则截图里速度列全是占位符，
+    /// 看不出这次改动做了什么。只改视图，不碰模型。
+    /// </summary>
+    static void DemoSpeedRow(Form f)
+    {
+        var fi = typeof(MainForm).GetField("grid", BindingFlags.Instance | BindingFlags.NonPublic);
+        if (fi?.GetValue(f) is not DataGridView g || g.Rows.Count < 5) return;
+        var r = g.Rows[4];                       // 剧集 第5集：下载中
+        r.Cells[2].Value = "43.5%";
+        r.Cells[2].Style.ForeColor = Theme.Primary;
+        r.Cells[3].Value = "1.28 MB/s";
+        r.Cells[3].Style.ForeColor = Theme.Primary;
+        r.Cells[4].Value = "612 MB";
+        r.Cells[4].Style.ForeColor = Theme.Size;
+        g.Rows[0].Cells[4].Value = "1.28 GB";    // 已完成那行补个成品大小
+        g.Rows[0].Cells[4].Style.ForeColor = Theme.Size;
     }
 
     /// <summary>对开关宿主整体 DrawToBitmap：像素级证明 5 行开关文字清晰、无遮挡无重叠。</summary>

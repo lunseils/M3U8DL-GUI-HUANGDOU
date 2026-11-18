@@ -138,15 +138,17 @@ if (hasTemplate)
         // 进程活着才能验证 TerminateTask 真的杀掉了它，以及行号漂移后进度不会串行。
         for (var i = 0; i <= 100; i += 10)
         {
-            Console.WriteLine($"PROGRESS|{i}.0%|{i}|100");
+            Console.WriteLine($"PROGRESS|{i}.0%|{i}|100|{(i + 1) * 512 * 1024}");
             Console.Out.Flush();
             Thread.Sleep(250);
         }
     }
     else
     {
+        // 4 段：百分比|已下载|总量|速率（字节/秒）—— 与真实 yt-dlp 的
+        // --progress-template "…|%(progress.speed)s" 输出一致
         for (var i = 0; i <= 100; i += 25)
-            Console.WriteLine($"PROGRESS|{i}.0%|{i}|100");
+            Console.WriteLine($"PROGRESS|{i}.0%|{i}|100|{(i + 1) * 512 * 1024}");
     }
     if (mode == "partial")
     {

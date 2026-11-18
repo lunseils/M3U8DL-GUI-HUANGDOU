@@ -940,6 +940,7 @@ internal sealed partial class MainForm : Form
         });
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "状态", AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells, ReadOnly = true, SortMode = DataGridViewColumnSortMode.NotSortable });
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "进度", AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells, MinimumWidth = 64, ReadOnly = true, SortMode = DataGridViewColumnSortMode.NotSortable });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "速度", AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells, MinimumWidth = 76, ReadOnly = true, SortMode = DataGridViewColumnSortMode.NotSortable });
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "文件大小", AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells, ReadOnly = true, SortMode = DataGridViewColumnSortMode.NotSortable });
         grid.CellValueChanged += OnCellValueChanged;
         // 双击：名称列进入改名，其它列定位文件（与下载软件一致）

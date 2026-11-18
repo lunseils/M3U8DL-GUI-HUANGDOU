@@ -29,10 +29,17 @@ internal sealed class Engine
         Gbk = Encoding.GetEncoding(936, EncoderFallback.ReplacementFallback, DecoderFallback.ReplacementFallback);
     }
 
-    static readonly Regex ReProgress = new(@"PROGRESS\|([\d.]+)%?\|(\d+|NA|None)\|(\d+|NA|None)", RegexOptions.Compiled);
+    // 第 4 段（速率）是可选的：万一跑的是不认识 %(progress.speed)s 的老版本 yt-dlp，
+    // 输出仍只有 3 段，此时进度照常解析，只是没有速率 —— 不能让整条进度帧失配。
+    static readonly Regex ReProgress = new(@"PROGRESS\|([\d.]+)%?\|(\d+|NA|None)\|(\d+|NA|None)(?:\|([\d.]+|NA|None))?", RegexOptions.Compiled);
     static readonly Regex ReFormats = new(@"Downloading (\d+) format", RegexOptions.Compiled);
     static readonly Regex ReRatio = new(@"(\d+)\s*/\s*(\d+)\s+(\d+(?:\.\d+)?)\s*%", RegexOptions.Compiled);
     static readonly Regex RePctOnly = new(@"(\d+(?:\.\d+)?)\s*%", RegexOptions.Compiled);
+    /// <summary>
+    /// RE 进度行尾部的速率字段，实测形态：<c>2/6 33.33% 1.33MB/3.98MB646.63KBps00:00:03</c>。
+    /// 注意不要加 <c>\b</c> 收尾 —— 后面紧跟的是 "00:00:03"，'s' 与 '0' 都算单词字符，边界不成立。
+    /// </summary>
+    static readonly Regex ReSpeed = new(@"(\d+(?:\.\d+)?)\s*([KMGT])?Bps", RegexOptions.Compiled);
     static readonly Regex ReFlag = new(@"--[a-zA-Z][\w-]*", RegexOptions.Compiled);
 
     // ============================================================
@@ -52,6 +59,7 @@ internal sealed class Engine
 
     readonly Action<string> _log;
     readonly Action<int, double> _progress;
+    readonly Action<int, long>? _speed;
     readonly Func<bool> _isRunning;
     /// <summary>
     /// 正在运行的下载进程 → 所属任务 id（探测进程不入表）。
@@ -73,6 +81,23 @@ internal sealed class Engine
     /// <summary>RE 的临时目录名（落在保存目录内，理由见 <see cref="BuildReCmd"/>）。</summary>
     public const string TempDirName = ".nm3u8dl-tmp";
 
+    /// <summary>速率回写的最小间隔（秒）。进度行每 100~200ms 一条，再密也没有显示意义。</summary>
+    const double SpeedMinIntervalSec = 0.6;
+
+    /// <summary>
+    /// 速率回写的节流闸门：变化超过 1/8 或距上次回写满 <see cref="SpeedMinIntervalSec"/> 才放行。
+    /// 30 并发时进度行每秒能有上百条，不节流会把 UI 线程刷满（表格重绘是同步的）。
+    /// </summary>
+    static bool ThrottleSpeed(ref long last, ref double lastEmit, long bps)
+    {
+        var now = Environment.TickCount64 / 1000.0;
+        if (now - lastEmit < SpeedMinIntervalSec && Math.Abs(bps - last) < Math.Max(1024, last / 8))
+            return false;
+        last = bps;
+        lastEmit = now;
+        return true;
+    }
+
     /// <summary>某个保存目录对应的 RE 临时目录。</summary>
     public static string TempDirOf(string workDir) => Path.Combine(workDir, TempDirName);
 
@@ -81,11 +106,42 @@ internal sealed class Engine
     /// 引擎只持有 id，没资格直接写表格），因此这里不再使用。
     /// </param>
     public Engine(Action<string> log, Action<int, string> status, Action<int, double> progress, Func<bool> isRunning)
+        : this(log, status, progress, null, isRunning) { }
+
+    /// <summary>带速率回写的构造重载（测试与截图工具走上面的 4 参版本即可）。</summary>
+    /// <param name="speed">速率回写（字节/秒；&lt;=0 表示当前测不出）。</param>
+    public Engine(Action<string> log, Action<int, string> status, Action<int, double> progress,
+                  Action<int, long>? speed, Func<bool> isRunning)
     {
         _log = log;
         _ = status;
         _progress = progress;
+        _speed = speed;
         _isRunning = isRunning;
+    }
+
+    /// <summary>
+    /// 把引擎输出里的速率记号换成字节/秒，识别不了返回 -1。
+    /// 支持 "646.63KBps" / "1.20MBps" / "0.00Bps"，也接受整行进度文本（正则自己找第一个速率字段）。
+    /// </summary>
+    internal static long ParseSpeedToken(string text)
+    {
+        var m = ReSpeed.Match(text);
+        if (!m.Success) return -1;
+        if (!double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+            return -1;
+        var unit = m.Groups[2].Value;
+        var mul = unit switch
+        {
+            "K" => 1024d,
+            "M" => 1024d * 1024,
+            "G" => 1024d * 1024 * 1024,
+            "T" => 1024d * 1024 * 1024 * 1024,
+            _ => 1d,
+        };
+        var bps = v * mul;
+        if (bps <= 0 || double.IsNaN(bps) || double.IsInfinity(bps)) return -1;
+        return (long)Math.Round(bps);
     }
 
     public void TerminateAll()
@@ -266,7 +322,7 @@ internal sealed class Engine
         cmd.AddRange(["-o", outTemplate, "--merge-output-format", "mp4",
                       "--no-playlist", "--newline", "--progress"]);
         cmd.Add("--progress-template");
-        cmd.Add("download:PROGRESS|%(progress._percent)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s");
+        cmd.Add("download:PROGRESS|%(progress._percent)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.speed)s");
         cmd.Add("--no-warnings");
 
         // 分片并发数是 yt-dlp 侧最大的速度杠杆：默认 1 意味着 HLS/DASH 逐个分片串行下载，
@@ -636,6 +692,8 @@ internal sealed class Engine
         var allLines = new List<string>();
         var cookieScopeWarn = false;
         double lastPct = -1, shownPct = -1, lastEmit = 0;
+        long lastSpeed = -1;
+        double lastSpeedEmit = 0;
         var totalStreams = 1;
         var streamIdx = 0;
 
@@ -663,6 +721,11 @@ internal sealed class Engine
                 {
                     if (!double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var raw))
                         return;
+                    // ④ 速率（字节/秒）。yt-dlp 在还没测出速率时给 "NA"，跳过即可。
+                    if (taskId >= 0 && _speed is not null &&
+                        double.TryParse(m.Groups[4].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var spd) &&
+                        spd > 0 && ThrottleSpeed(ref lastSpeed, ref lastSpeedEmit, (long)spd))
+                        _speed(taskId, (long)spd);
                     // 把每个流的 0~100% 折算成整集的整体进度，
                     // 否则第 1 个流跑满后第 2 个流又从 0% 开始，看起来像"下载完成又重新下载"
                     raw = Math.Clamp(raw, 0, 100);
@@ -866,6 +929,8 @@ internal sealed class Engine
 
         var tail = new Queue<string>();
         double lastPct = -1, shownPct = -1, lastEmit = 0;
+        long lastSpeed = -1;
+        double lastSpeedEmit = 0;
 
         try
         {
@@ -876,6 +941,12 @@ internal sealed class Engine
                 if (s.Length == 0) return;
                 tail.Enqueue(s);
                 while (tail.Count > 20) tail.Dequeue();
+
+                // 速率与进度在同一条行里（"…/6 33.33% 1.33MB/3.98MB646.63KBps00:00:03"），先取速率再看进度。
+                var bps = ParseSpeedToken(s);
+                if (bps > 0 && taskId >= 0 && _speed is not null &&
+                    ThrottleSpeed(ref lastSpeed, ref lastSpeedEmit, bps))
+                    _speed(taskId, bps);
 
                 double? pct = null;
                 var m = ReRatio.Match(s);
@@ -906,7 +977,8 @@ internal sealed class Engine
                         if (taskId >= 0) _progress(taskId, capped);
                     }
                     var residue = ReRatio.Replace(s, "");
-                    residue = RePctOnly.Replace(residue, "").Trim(' ', '-', ':', '|', '\t');
+                    residue = RePctOnly.Replace(residue, "");
+                    residue = ReSpeed.Replace(residue, "").Trim(' ', '-', ':', '|', '\t');
                     if (residue.Length == 0) return;
                 }
                 _log(s);

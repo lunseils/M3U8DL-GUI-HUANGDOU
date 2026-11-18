@@ -134,6 +134,13 @@ internal static class Naming
         if (n < 1024L * 1024 * 1024 * 1024) return FormattableString.Invariant($"{n / 1024.0 / 1024 / 1024:0.00} GB");
         return FormattableString.Invariant($"{n / 1024.0 / 1024 / 1024 / 1024:0.00} TB");
     }
+
+    /// <summary>
+    /// 速度格式化（字节/秒）。&lt;=0 表示「还没测出速率」，返回占位符而不是 "0 B/s" ——
+    /// 下载刚起步的那一两百毫秒里引擎给的就是 0，直接显示 0 B/s 会让人以为卡死了。
+    /// </summary>
+    public static string FmtSpeed(long bytesPerSec)
+        => bytesPerSec <= 0 ? "—" : FmtSize(bytesPerSec) + "/s";
 }
 
 /// <summary>

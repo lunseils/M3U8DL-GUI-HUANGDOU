@@ -74,6 +74,8 @@ internal sealed partial class MainForm : Form
     readonly object rowLock = new();
     /// <summary>任务 id → 令牌。下载中删除/排序会让行号漂移，所以身份一律用任务 id。</summary>
     readonly Dictionary<int, int> rowToken = [];
+    /// <summary>任务 id → 当前速率（字节/秒）。只存「测得出」的，收尾时剔除，用于底部状态栏汇总。</summary>
+    readonly Dictionary<int, long> speeds = [];
     readonly Engine engine;
     volatile bool batchRunning;
     int batchEpoch;
@@ -112,6 +114,7 @@ internal sealed partial class MainForm : Form
             msg => Ui(() => AppendLog(msg)),
             (row, st) => Ui(() => SetStatus(row, st)),
             (row, pct) => Ui(() => SetProgress(row, pct)),
+            (row, bps) => Ui(() => SetSpeed(row, bps)),
             () => batchRunning);
 
         BuildUi();
@@ -133,6 +136,12 @@ internal sealed partial class MainForm : Form
     // ============================================================
     // 状态刷新
     // ============================================================
+    /// <summary>
+    /// 表格列索引。原先各处直接写 0~3 裸数字，加一列就得靠记忆把所有位置找全，
+    /// 漏一个就写到隔壁列上。顺序必须与 BuildUi 里 Columns.Add 的顺序一致。
+    /// </summary>
+    const int ColName = 0, ColStatus = 1, ColProgress = 2, ColSpeed = 3, ColSize = 4;
+
     static Color StatusColor(string status) => status switch
     {
         "完成" => Theme.Done,
@@ -178,29 +187,37 @@ internal sealed partial class MainForm : Form
         var row = RowOf(id);
         if (row < 0) return;   // 任务已被删掉：结果直接丢弃
         lock (queueLock) queue[row].Status = text;
+        var terminal = text is "完成" or "失败" or "已取消";
         if (row < grid.Rows.Count)
         {
             updating = true;
             try
             {
-                grid.Rows[row].Cells[1].Value = text;
-                grid.Rows[row].Cells[1].Style.ForeColor = StatusColor(text);
+                var r = grid.Rows[row];
+                r.Cells[ColStatus].Value = text;
+                r.Cells[ColStatus].Style.ForeColor = StatusColor(text);
                 if (text == "完成")
                 {
-                    grid.Rows[row].Cells[2].Value = "100%";
-                    grid.Rows[row].Cells[2].Style.ForeColor = Theme.Done;
+                    r.Cells[ColProgress].Value = "100%";
+                    r.Cells[ColProgress].Style.ForeColor = Theme.Done;
                 }
                 else if (text is "失败" or "已取消")
                 {
-                    var cur = Convert.ToString(grid.Rows[row].Cells[2].Value) ?? "";
-                    if (!cur.EndsWith('%')) grid.Rows[row].Cells[2].Value = "—";
-                    grid.Rows[row].Cells[2].Style.ForeColor = Theme.Cancel;
+                    var cur = Convert.ToString(r.Cells[ColProgress].Value) ?? "";
+                    if (!cur.EndsWith('%')) r.Cells[ColProgress].Value = "—";
+                    r.Cells[ColProgress].Style.ForeColor = Theme.Cancel;
                 }
+                // 终态没有速率可言，留着最后那一帧数字会让人以为还在跑
+                if (terminal) r.Cells[ColSpeed].Value = "—";
             }
             finally { updating = false; }
         }
+        if (terminal)
+        {
+            lock (queueLock) speeds.Remove(id);   // 同时把这条从底部「总速度」里剔掉
+            SaveTasks();
+        }
         UpdateQueueStatusLabel();
-        if (text is "完成" or "失败" or "已取消") SaveTasks();
     }
 
     void SetProgress(int id, double pct)
@@ -214,8 +231,8 @@ internal sealed partial class MainForm : Form
                 var text = Math.Abs(pct - Math.Round(pct)) < 0.05
                     ? FormattableString.Invariant($"{Math.Round(pct):0}%")
                     : FormattableString.Invariant($"{pct:0.0}%");
-                grid.Rows[row].Cells[2].Value = text;
-                grid.Rows[row].Cells[2].Style.ForeColor = pct >= 100 ? Theme.Done : Theme.Primary;
+                grid.Rows[row].Cells[ColProgress].Value = text;
+                grid.Rows[row].Cells[ColProgress].Style.ForeColor = pct >= 100 ? Theme.Done : Theme.Primary;
             }
             finally { updating = false; }
         }
@@ -230,10 +247,47 @@ internal sealed partial class MainForm : Form
         {
             var text = Naming.FmtSize(size);
             if (count > 1) text += $" · {count} 项";
-            grid.Rows[row].Cells[3].Value = text;
-            grid.Rows[row].Cells[3].Style.ForeColor = Theme.Size;
+            grid.Rows[row].Cells[ColSize].Value = text;
+            grid.Rows[row].Cells[ColSize].Style.ForeColor = Theme.Size;
         }
         finally { updating = false; }
+    }
+
+    /// <summary>
+    /// 逐任务速率回写。bps &lt;= 0 表示「此刻测不出」（刚起步引擎给 NA/0，或已收尾），
+    /// 显示占位符并把该任务从总速度里剔除 —— 不显示 0 B/s，那看起来像卡死。
+    /// </summary>
+    void SetSpeed(int id, long bps)
+    {
+        lock (queueLock)
+        {
+            if (bps > 0) speeds[id] = bps;
+            else speeds.Remove(id);
+        }
+        var row = RowOf(id);
+        if (row >= 0 && row < grid.Rows.Count)
+        {
+            updating = true;
+            try
+            {
+                var cell = grid.Rows[row].Cells[ColSpeed];
+                cell.Value = Naming.FmtSpeed(bps);
+                cell.Style.ForeColor = bps > 0 ? Theme.Primary : Theme.Muted;
+            }
+            finally { updating = false; }
+        }
+        UpdateQueueStatusLabel();
+    }
+
+    /// <summary>当前所有在跑任务的速率合计（字节/秒）。</summary>
+    long TotalSpeed()
+    {
+        lock (queueLock)
+        {
+            long sum = 0;
+            foreach (var v in speeds.Values) sum += v;
+            return sum;
+        }
     }
 
     void UpdateQueueStatusLabel()
@@ -269,6 +323,9 @@ internal sealed partial class MainForm : Form
             : doneCount >= total
                 ? $"完成 · {total}/{total}"
                 : $"运行中 · {Math.Min(doneCount + 1, total)}/{total}";
+        // 汇总速率：单任务看行内那一列，多任务并发时这里给出总吞吐
+        var spd = TotalSpeed();
+        if (spd > 0) lblStatus.Text += $" · ↓ {Naming.FmtSpeed(spd)}";
     }
 
     // ============================================================

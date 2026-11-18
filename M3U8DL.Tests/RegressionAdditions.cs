@@ -36,6 +36,7 @@ internal static class RegressionAdditions
         S5Regression();
         RefactorRegression();
         DownloadSpeedRegression();
+        SpeedColumnRegression();
     }
 
     /// <summary>反射调用 Engine.BuildYtDlpCmd（与 QaRegression / Tests 里的同名辅助保持同一签名）。</summary>
@@ -372,6 +373,125 @@ internal static class RegressionAdditions
             var counted = (int)linesField.GetValue(f)!;
             Check("BUG-12 多行日志按实际行数计数", counted == 3, counted.ToString());
             Check("BUG-12 日志文本完整", txtLog.Text.Contains("第三行"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("APPDATA", old);
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// 队列「速度」列回归。样例字符串取自真实输出，不是编出来的：
+    /// RE 的进度行形如 <c>2/6 33.33% 1.33MB/3.98MB646.63KBps00:00:03</c>（速率紧跟已下载/总量，
+    /// 后面那段 "00:00:03" 没有空格分隔，所以解析不能依赖 \b 或空白）。四类断言：
+    /// <list type="number">
+    /// <item>格式化：0 显示占位符而不是 "0 B/s"（刚起步时引擎给 0，显示 0 会像卡死）；</item>
+    /// <item>解析：KBps/MBps/Bps 三种单位换算，以及 0 值判为「测不出」；</item>
+    /// <item>列序：速度在进度与文件大小之间，加列不能破坏既有列偏移；</item>
+    /// <item>生命周期：写入生效、归零回占位符、终态必须清空。</item>
+    /// </list>
+    /// </summary>
+    static void SpeedColumnRegression()
+    {
+        Check("速度格式化：0 显示占位符", Naming.FmtSpeed(0) == "—", Naming.FmtSpeed(0));
+        Check("速度格式化：负数显示占位符", Naming.FmtSpeed(-5) == "—", Naming.FmtSpeed(-5));
+        Check("速度格式化：KB 档", Naming.FmtSpeed(1536) == "1.5 KB/s", Naming.FmtSpeed(1536));
+        Check("速度格式化：MB 档", Naming.FmtSpeed(5 * 1024 * 1024) == "5.00 MB/s", Naming.FmtSpeed(5 * 1024 * 1024));
+
+        var parse = typeof(Engine).GetMethod("ParseSpeedToken", BindingFlags.Static | BindingFlags.NonPublic)!;
+        long P(string s) => (long)parse.Invoke(null, [s])!;
+
+        const string reLine = "Vid 1280x720 | 2000 Kbps ------ 2/6 33.33% 1.33MB/3.98MB646.63KBps00:00:03";
+        Check("RE 整行进度里取出速率（单位 KBps）", P(reLine) == 662149, P(reLine).ToString());
+        Check("速率解析：MBps", P("1.20MBps") == 1258291, P("1.20MBps").ToString());
+        Check("速率解析：裸 Bps", P("512Bps") == 512, P("512Bps").ToString());
+        Check("速率解析：0.00Bps 视为测不出", P("0.00Bps") == -1, P("0.00Bps").ToString());
+        Check("速率解析：无速率字段返回 -1", P("INFO : Done") == -1, P("INFO : Done").ToString());
+
+        // yt-dlp 侧必须把 speed 塞进进度模板，否则拿不到速率
+        var eng = new Engine(_ => { }, (_, _) => { }, (_, _) => { }, () => true);
+        var o = new Opt
+        {
+            Executable = @"C:\tools\N_m3u8DL-RE.exe",
+            WorkDir = @"C:\out",
+            UseYtDlp = true,
+            MaxThreads = 8,
+            RetryCount = 3,
+            Timeout = 100,
+        };
+        var y = BuildYtDlp(eng, "http://x/a.m3u8", "剧集", o, []);
+        if (y is null)
+        {
+            Check("yt-dlp 可用（速率模板断言跳过）", true, "本机无 yt-dlp");
+        }
+        else
+        {
+            var ti = y.IndexOf("--progress-template");
+            var tpl = ti >= 0 && ti + 1 < y.Count ? y[ti + 1] : "";
+            Check("yt-dlp 进度模板带速率字段", tpl.Contains("%(progress.speed)s"), tpl);
+        }
+
+        // 端到端：真起一个子进程产出 4 段进度帧，验证「解析 → 回调」这段真的通了
+        // （只测正则是不够的，回调没接上照样不显示）
+        var fake = Environment.GetEnvironmentVariable("FAKE_EXE") ?? "";
+        if (!File.Exists(fake))
+        {
+            Check("FakeDownloader 可用（速率端到端断言跳过）", true, "未设置 FAKE_EXE");
+        }
+        else
+        {
+            var work = Path.Combine(Path.GetTempPath(), "m3u8dl_spd_e2e_" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(work);
+            try
+            {
+                long got = -1;
+                var eng2 = new Engine(_ => { }, (_, _) => { }, (_, _) => { }, (_, bps) => got = bps, () => true);
+                var opt = o with { WorkDir = work };
+                var cmd = new List<string> { fake, "-o", Path.Combine(work, "e2e.%(ext)s"), "--newline" };
+                var mi = typeof(Engine).GetMethod("YtDlpAttemptAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                var t = (Task)mi.Invoke(eng2, [cmd, opt, "e2e", 7, DateTime.Now])!;
+                t.Wait(20000);
+                Check("yt-dlp 进度帧里的速率到达回调", got > 0, got.ToString());
+            }
+            finally { try { Directory.Delete(work, true); } catch { } }
+        }
+
+        // ---- UI：列序与写入/清空 ----
+        var dir = Path.Combine(Path.GetTempPath(), "m3u8dl_spd_" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(GuiDir(dir));
+        var old = Environment.GetEnvironmentVariable("APPDATA");
+        Environment.SetEnvironmentVariable("APPDATA", Path.Combine(dir, "appdata"));
+        try
+        {
+            using var f = new MainForm();
+            f.Show();
+            Application.DoEvents();
+            var grid = (DataGridView)GetField(f, "grid");
+            var headers = string.Join("|", grid.Columns.Cast<DataGridViewColumn>().Select(c => c.HeaderText));
+            Check("速度列位于进度与文件大小之间",
+                  grid.Columns.Count == 5
+                  && Convert.ToString(grid.Columns[3].HeaderText) == "速度"
+                  && Convert.ToString(grid.Columns[4].HeaderText) == "文件大小",
+                  headers);
+
+            Call(f, "AddTask", "示例", "http://x/speed.m3u8", "下载中", new List<string>(), false);
+            var queue = (List<DownloadTask>)GetField(f, "queue");
+            var id = queue[0].Id;
+            Call(f, "SetSpeed", id, 5L * 1024 * 1024);
+            Check("速率写入表格", Convert.ToString(grid.Rows[0].Cells[3].Value) == "5.00 MB/s",
+                  Convert.ToString(grid.Rows[0].Cells[3].Value) ?? "null");
+            Call(f, "SetSpeed", id, 0);
+            Check("速率为 0 时回到占位符", Convert.ToString(grid.Rows[0].Cells[3].Value) == "—",
+                  Convert.ToString(grid.Rows[0].Cells[3].Value) ?? "null");
+
+            Call(f, "SetSpeed", id, 3L * 1024 * 1024);
+            Call(f, "SetStatus", id, "完成");
+            Check("完成后速度列清空（不留上一帧数值）",
+                  Convert.ToString(grid.Rows[0].Cells[3].Value) == "—",
+                  Convert.ToString(grid.Rows[0].Cells[3].Value) ?? "null");
+            var speeds = (System.Collections.IDictionary)GetField(f, "speeds");
+            Check("终态后不再计入总速度", speeds.Count == 0, speeds.Count.ToString());
         }
         finally
         {

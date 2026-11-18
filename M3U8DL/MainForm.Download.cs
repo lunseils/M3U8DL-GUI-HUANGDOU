@@ -273,10 +273,13 @@ internal sealed partial class MainForm : Form
                     lock (queueLock) queue[row].Status = "待下载";
                     if (row < grid.Rows.Count)
                     {
-                        grid.Rows[row].Cells[1].Value = "待下载";
-                        grid.Rows[row].Cells[1].Style.ForeColor = Theme.Muted;
-                        grid.Rows[row].Cells[2].Value = "—";
-                        grid.Rows[row].Cells[2].Style.ForeColor = Theme.Muted;
+                        var r = grid.Rows[row];
+                        r.Cells[ColStatus].Value = "待下载";
+                        r.Cells[ColStatus].Style.ForeColor = Theme.Muted;
+                        r.Cells[ColProgress].Value = "—";
+                        r.Cells[ColProgress].Style.ForeColor = Theme.Muted;
+                        r.Cells[ColSpeed].Value = "—";   // 重试前先把上一轮的速率清掉
+                        r.Cells[ColSpeed].Style.ForeColor = Theme.Muted;
                     }
                 }
             }
@@ -402,13 +405,16 @@ internal sealed partial class MainForm : Form
             {
                 var row = RowOf(id);
                 if (row < 0) continue;
-                lock (queueLock) queue[row].Status = "已取消";
+                lock (queueLock) { queue[row].Status = "已取消"; speeds.Remove(id); }
                 if (row >= grid.Rows.Count) continue;
-                grid.Rows[row].Cells[1].Value = "已取消";
-                grid.Rows[row].Cells[1].Style.ForeColor = Theme.Cancel;
-                var cur = Convert.ToString(grid.Rows[row].Cells[2].Value) ?? "";
-                if (!cur.EndsWith('%')) grid.Rows[row].Cells[2].Value = "—";
-                grid.Rows[row].Cells[2].Style.ForeColor = Theme.Cancel;
+                var r = grid.Rows[row];
+                r.Cells[ColStatus].Value = "已取消";
+                r.Cells[ColStatus].Style.ForeColor = Theme.Cancel;
+                var cur = Convert.ToString(r.Cells[ColProgress].Value) ?? "";
+                if (!cur.EndsWith('%')) r.Cells[ColProgress].Value = "—";
+                r.Cells[ColProgress].Style.ForeColor = Theme.Cancel;
+                r.Cells[ColSpeed].Value = "—";
+                r.Cells[ColSpeed].Style.ForeColor = Theme.Muted;
                 changed++;
             }
         }
