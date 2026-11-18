@@ -12,7 +12,7 @@ namespace M3U8DL;
 /// </summary>
 internal sealed partial class MainForm : Form
 {
-    // 硬编码路径常量已移除（team-lead 裁定）：默认值改由 PATH/常见目录探测 + UserProfile/Downloads，
+    // 硬编码路径常量已移除：默认值改由 PATH/常见目录探测 + UserProfile/Downloads，
     // 持久化在独立的 settings.json（见 MainForm.Settings.cs）。
     const int MaxLogLines = 5000;
     const int QueuePollMs = 200;
@@ -103,7 +103,7 @@ internal sealed partial class MainForm : Form
     {
         Font = new Font("Microsoft YaHei UI", 9F);
         StartPosition = FormStartPosition.CenterScreen;
-        // 按 team-lead 裁定以 PRD 为准：ClientSize 1280×800、MinimumSize 1120×720
+        // 按 PRD 定稿尺寸：ClientSize 1280×800、MinimumSize 1120×720
         MinimumSize = new Size(1120, 720);
         ClientSize = new Size(1280, 800);
         AutoScaleMode = AutoScaleMode.Dpi;

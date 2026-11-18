@@ -5,7 +5,7 @@ using System.Windows.Forms;
 namespace M3U8DL.Tests;
 
 /// <summary>
-/// 工程师为本次 Bug 修复新增的回归测试（独立文件，不改动 Tests.cs / QaRegression.cs 的任何既有断言）。
+/// 本批 Bug 修复新增的回归测试（独立文件，不改动 Tests.cs / QaRegression.cs 的任何既有断言）。
 /// 由 Tests.Main() 末尾显式调用。所有涉及 MainForm 的用例都先把 APPDATA 指向隔离目录，
 /// 绝不触碰用户真实任务库 %APPDATA%\NM3U8DL_GUI\tasks.json。
 /// </summary>
@@ -28,7 +28,7 @@ internal static class RegressionAdditions
 
     public static void Run()
     {
-        Console.WriteLine("=== 6) 工程师新增回归（Bug 修复验证）===");
+        Console.WriteLine("=== 6) 新增回归（Bug 修复验证）===");
         RenameRegression();
         NoDirtyLoadRegression();
         DirtyLoadRegression();

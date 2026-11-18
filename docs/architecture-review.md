@@ -1,21 +1,20 @@
 # M3U8DL 深度代码审查 + 架构重构设计
 
-审查人：高见远（Gao）· 架构师
 代码基线：`M3U8DL/`（Core.cs 324 行、Engine.cs 914 行、MainForm.cs 1345 行、Ui.cs 121 行、Program.cs 25 行）+ `M3U8DL.Tests/`（Tests.cs 855 行、QaRegression.cs 327 行）
-方法：全量读码 + 逐条 grep 复核 + 对关键 WinForms 行为写探针实测（DataGridView.CellValueChanged）+ dotnet 10.0.203 环境确认。
+审查方式：全量读码 + 逐条 grep 复核 + 对关键 WinForms 行为写探针实测（DataGridView.CellValueChanged）+ dotnet 10.0.203 环境确认。
 
 ---
 
-## 0. 对你已查实事实的独立复核结论
+## 0. 既有结论的独立复核
 
-| 你的判断 | 我的复核 | 证据 / 修正 |
+| 待核结论 | 复核结果 | 证据 / 修正 |
 |---|---|---|
 | 默认引擎下 8 个死选项 | ✅ **完全证实** | `Engine.cs:86` 分流；8 个字段只在 `ReAsync` 中读取（见下表逐条）。**补充**：不是 100% 死 —— `YtDlpAsync:517-524` 在 Cookie/CBC/403 失败时会自动降级调用 `ReAsync`，此时这 8 项会生效。但这条路径罕见，作为默认 UI 选项确实误导。 |
 | 8 项逐条位置 | ✅ 全部命中 | DelAfterMerge 728 / NoDateInName 712 / MuxWhileDownload 729-733 / BinaryMerge 735 / NoLog 713-719 / CheckSegmentsCount 738 / AppendUrlParams 737 / MuxFile 711 |
 | 两引擎共用 7 项 | ✅ 证实 | NoSystemProxy 225↔720、NoMerge 226(`--keep-video`)↔734(`--skip-merge`)、ConcurrentDownload 185↔736、MaxThreads 185↔739、RetryCount 187/189↔740、Timeout 191↔741、LimitSpeed 192/195↔742 |
 | UI 特有 5 项 | ✅ 证实 | UseYtDlp 86/847、SkipExisting 848、CleanStaleParts 849、AlwaysOnTop（仅 MainForm，不进 Opt）、OnlyParseM3u8 86/722/839 |
 | BUG-1 重命名失效 | ✅ 证实 | 已用最小探针实测：程序设置 `cell.Value` **同步触发** `CellValueChanged`；连续两次设同值只触发 1 次。 |
-| BUG-2 LoadTasks 无条件 SaveTasks | ✅ 证实，且比你说得更严重 | 见 BUG-2：不只是 mtime，还会**永久落盘**去重/过滤/改名结果，是真实数据丢失路径。 |
+| BUG-2 LoadTasks 无条件 SaveTasks | ✅ 证实，且后果比原描述更严重 | 见 BUG-2：不只是 mtime，还会**永久落盘**去重/过滤/改名结果，是真实数据丢失路径。 |
 | BUG-3 btnStop / btnLocate 从不禁用 | ⚠️ **部分修正** | btnStop 确需修复；**btnLocate 保持启用是正确设计** —— 它的用途就是在空闲态定位已完成文件（MainForm.cs:814 限定完成/失败/已取消），禁用它反而破坏功能。 |
 | BUG-4 LocateTaskFile 无选中打开目录 | ✅ 证实 | MainForm.cs:802 |
 | BUG-5 --dump 调试遗留 | ✅ 证实 | 全仓 grep：除 Program.cs:16/20 与 MainForm.cs:1312 外零引用；Tests.cs / QaRegression.cs **均未引用**。且 `C://tmp//` 通常不存在，--dump 模式会直接抛异常。 |
@@ -30,7 +29,7 @@
 | MaxThreads 双语义 | ✅ 证实，是设计缺陷 | Engine.cs:185 `--concurrent-fragments` vs 739 `--thread-count`，默认 32、上限 100（MainForm.cs:43）。另有第三个并发旋钮 `nudConc`（42，默认 1、上限 20）= 队列并发。**但不能直接改字段名**（见 §5）。 |
 | 两个判定边界重叠导致重复降级 | ⚠️ **重叠存在，但"重复降级"结论不成立** | `IsCbcDecryptFailure` 在 310 和 345 都被调用，确实重复；但 `YtDlpAsync` 里两检查是**顺序执行**：495 循环重拉 2 次 → 517 才降级 RE。不会重复降级，只会**白跑 2 次 yt-dlp**。且改这个判定会破坏 Tests.cs:280-281。 |
 
-### 反射契约完整清单（比 team-lead 给的更长，重构必须全部保住）
+### 反射契约完整清单（重构必须全部保住）
 
 `Tests.cs:735-743` 的 `GetField` 用 `BindingFlags.Instance | NonPublic`，`Call` 用 `f.GetType().GetMethod(name, Instance|NonPublic|Public)` —— 都是**精确类型查找**，所以：
 
@@ -338,7 +337,7 @@ internal sealed class CardPanel : Panel
 原因：测试 `Tests.cs:792` 做的是 `((Dictionary<string, CheckBox>)GetField(f, "chk"))[key].Checked = value;`。若换成自定义 `Control`，字段类型变了，反射强转直接失败。继承 `CheckBox` 后：
 - `Checked` 属性由基类提供，测试零改动；
 - 空格键切换、Automation/Accessibility 由基类白送；
-- 我们只覆盖 `OnPaint`，不画基类方框。
+- 只覆盖 `OnPaint`，不画基类方框。
 
 ```csharp
 internal sealed class ToggleSwitch : CheckBox
@@ -363,7 +362,7 @@ internal sealed class ToggleSwitch : CheckBox
         g.SmoothingMode = SmoothingMode.AntiAlias;
 
         // ✅ 轨道：FillRectangle 中间 + FillEllipse 两端半圆
-        //    不要用 GraphicsPath.AddArc 四段弧 —— team-lead 实测会出现月牙形缺陷
+        //    不要用 GraphicsPath.AddArc 四段弧 —— 实测会出现月牙形缺陷
         using var track = new SolidBrush(Enabled ? (Checked ? Theme.Primary : Theme.FieldBorder) : Theme.Cancel);
         g.FillRectangle(track, 0, 0, w, h);           // 先整块矩形
         g.FillEllipse(track, 0, 0, h, h);             // 左半圆
@@ -382,7 +381,7 @@ internal sealed class ToggleSwitch : CheckBox
     }
 }
 ```
-**WFO1000 踩坑（team-lead 实测补充）**：`.NET 10` 的 WFO1000 分析器会对**自定义 Control 子类的公开可读写属性**直接报编译错误（`IsOn` 也一样）。
+**WFO1000 踩坑（实测）**：`.NET 10` 的 WFO1000 分析器会对**自定义 Control 子类的公开可读写属性**直接报编译错误（`IsOn` 也一样）。
 - 最佳规避：**本控件不新增任何公开可读写属性**，直接用继承的 `Checked`；
 - 若确需新增（例如 `public bool IsOn { get; set; }`），必须：
 ```csharp
@@ -653,23 +652,23 @@ internal sealed record Opt
 | **S4 新布局落地** | 按 §3 控件树重写 `MainForm.Layout.cs`；保留所有反射字段名与方法名；把 8 个 RE 选项移入 `reOptionsPanel` | 全量测试 + `LayoutTests`（Tests.cs:42）逐项核对 + 人工截图对比参考图 | **高**（布局回归） |
 | **S5 并发与数据一致性** | BUG-7（UiSync + token 守卫）、BUG-8（SaveTasksDeferred）、BUG-9（预热后台化）、BUG-10（_procs） | 全量测试 + 停止/重启队列专项 + 100 条粘贴写盘计数 | 中高 |
 | **S6 选项持久化 + `Opt.Re`** | `settings.json`、`AppSettings`；`Opt.Re` 子记录（Engine 8 处 + Snapshot） | 全量测试 + 重启后选项保持 + 清理 8 个选项的改动点表逐项验收 | 中 |
-| **S7 选项裁剪** | 按 PM 决策表，用 §5.3 清单逐项删除 | 全量测试（确认 8 项零测试引用） | 低 |
+| **S7 选项裁剪** | 按定稿的产品决策表，用 §5.3 清单逐项删除 | 全量测试（确认 8 项零测试引用） | 低 |
 
 **分步原则**：S1/S2/S3 都不改变视觉与行为，可独立回滚；S4 是唯一大规模视觉变更，建议单独提交以便 diff 审查；S5 涉及并发，必须在 S2 完成后做（否则 method 位置频繁变动会掩盖 bug）。
 
 ---
 
-## 8. 结论摘要（给工程师的一句话版）
+## 8. 结论摘要（一句话版）
 
-1. 你查的 8 个死选项、6 个 BUG 全部属实；我要补充 9 条，其中 **BUG-7（BeginInvoke + 无 token 守卫导致状态写盘竞态）** 和 **BUG-9（启动同步探测 yt-dlp 最长冻结 64 秒）** 是优先级仅次于 BUG-1/2 的 must-fix。
-2. 两处要修正你的判断：**btnLocate 不应禁用**；**967-973 只是缩进问题、queueLock 无死锁**。
+1. 8 个死选项、6 个 BUG 全部属实；另补充 9 条，其中 **BUG-7（BeginInvoke + 无 token 守卫导致状态写盘竞态）** 和 **BUG-9（启动同步探测 yt-dlp 最长冻结 64 秒）** 是优先级仅次于 BUG-1/2 的 must-fix。
+2. 两处结论需要修正：**btnLocate 不应禁用**；**967-973 只是缩进问题、queueLock 无死锁**。
 3. 自绘方案：圆角卡片用 `CardPanel + Region`（阴影放父容器，Region 会裁剪）；开关用 **`ToggleSwitch : CheckBox`**（保住反射契约）+ `FillRectangle`+`FillEllipse` 画胶囊；进度条用 `CellPainting` 但**保留文字 Value**；所有尺寸乘 `DeviceDpi/96f`；自定义 Control 新增公开可写属性必须加 `[DesignerSerializationVisibility(Hidden)]`。
 4. 文件拆分**必须 partial**，且 `Tests.csproj` 的 Compile 清单要同步加 10 个新文件。
 5. 唯一会打断现有测试的重构是 BUG-11 的判定收窄（Tests.cs:280-281）和任何反射契约变更；删除 8 个 RE 专属选项反而是零测试风险的。
 
 ---
 
-## 9. 增补：对齐 PM 决策与 LayoutTests 硬约束（后补，优先级高于前文对应章节）
+## 9. 增补：对齐定稿决策与 LayoutTests 硬约束（后补，优先级高于前文对应章节）
 
 ### 9.1 compatHost 方案评估：选方案 C
 
@@ -708,24 +707,24 @@ WinForms 探针验证 Tests.cs:365/372：
 5. 构造期显式 `Size` + `CreateControl()` + `PerformLayout()`，不能依赖隐藏容器的 Dock
 6. `cmbCookieBrowser.Items` 保持 10 项原顺序；`chk` 保留全部 key（测试实际只用 `useYtDlp`，Tests.cs:496/510），值类型必须是 `CheckBox`
 
-### 9.3 因 PM 决策而变更的章节
+### 9.3 因定稿决策而变更的章节
 
 - **§2.2 开关**：不变，`ToggleSwitch : CheckBox`，`chk["useYtDlp"]` 继续可用。
 - **BUG-3**：由设计消除 —— 开始/停止合并双态 `btnRunToggle`（空闲 Primary "开始队列下载"，运行 Danger "停止下载"）。已 grep 确认测试零引用 btnStop，字段可删。`SetBatchButtons` 只管 4 个按钮；按钮文案统一由 `SyncRunButton()` 一处负责。
 - **§5.1 RE 选项可见性全改**：不做"仅 RE 可见"。8 项常驻 SettingsOverlay 内「RE 执行路径选项（含 yt-dlp 失败自动兜底）」默认折叠分组（Engine.cs:517-525 用同一 Opt 调 ReAsync）。`onlyParseM3u8` 保留在 Opt（Engine.cs:86 强制 RE）。
 - **§5.3**："删除改动位置清单"改为**备用清单**（8 项决定不删，表仍作为未来裁剪索引）。
 - **新增 FixedExecutable/FixedWorkDir 清理**：MainForm.cs:10 硬编码另一软件安装路径、:11 `E:/Downloads`，新机器必失效。改为 PATH + 常见目录探测 `N_m3u8DL-RE.exe`（复用 `OnPath`，MainForm.cs:1335），saveDir 默认 `Environment.GetFolderPath(SpecialFolder.UserProfile)/Downloads`，并持久化到 settings.json。⚠️ `Engine.ReAsync:681` 直接用 `o.Executable` 作 FileName，空值会抛异常 → `StartBatch` 需在非 yt-dlp 路径前校验 RE 路径。
-- **Theme.Border**：PM 的"无引用"对当前代码成立；建议保留复用于空态虚线/卡片描边。若删除，新增 `Theme.EmptyBorder` 即可，测试零影响。
+- **Theme.Border**：此前判定的"无引用"对当前代码成立；建议保留复用于空态虚线/卡片描边。若删除，新增 `Theme.EmptyBorder` 即可，测试零影响。
 
 ### 9.4 数据安全与验证缺口
 
-用户真实任务库已增长至 **18 条 / 11091 字节**，安全快照位于 `%TEMP%\m3u8dl_safety\tasks.json.baseline`。S0 步骤增加：迁移前比对快照字节数；BUG-2 修复后用同一文件验收"构造 Form 前后字节与 mtime 不变"（无 dirty 场景）。
+本机真实任务库已增长至 **18 条 / 11091 字节**，安全快照位于 `%TEMP%\m3u8dl_safety\tasks.json.baseline`。S0 步骤增加：迁移前比对快照字节数；BUG-2 修复后用同一文件验收"构造 Form 前后字节与 mtime 不变"（无 dirty 场景）。
 
-**未能执行的验证**：本会话尝试运行基线 `dotnet run --project M3U8DL.Tests` 被沙箱安全策略拦截（非测试失败）。工程师必须在改代码前于本地跑一次并记录 199/0 基线，尤其确认 LayoutTests 当前全绿，否则新 UI 的断言失败无法归因。
+**未能执行的验证**：验证过程中尝试运行基线 `dotnet run --project M3U8DL.Tests` 被环境安全策略拦截（非测试失败）。修改代码前必须先在本地跑一次并记录 199/0 基线，尤其确认 LayoutTests 当前全绿，否则新 UI 的断言失败无法归因。
 
 ### 9.5 阻断修正：定稿 PRD 7.2 的控件摆放实测必挂断言 B
 
-PM 定稿的 `M3U8DL/PRD_UI_Refactor_Final.md` 第 358-363 行把 `txtCookieFile` 放在 2 行 TLP 的 `(1,0)`、`cmbCookieBrowser` 放 `(1,1)`，第 375 行建议 `Padding=(12,8,12,8)`。**按此实现，断言 B 必挂。**
+定稿的 `M3U8DL/PRD_UI_Refactor_Final.md` 第 358-363 行把 `txtCookieFile` 放在 2 行 TLP 的 `(1,0)`、`cmbCookieBrowser` 放 `(1,1)`，第 375 行建议 `Padding=(12,8,12,8)`。**按此实现，断言 B 必挂。**
 
 WinForms 探针（构造期 `CreateControl()+PerformLayout()`）逐项实测：
 
@@ -742,6 +741,6 @@ WinForms 探针（构造期 `CreateControl()+PerformLayout()`）逐项实测：
 1. **推荐**：照抄现状 —— `Height=272`、`Padding=(10,2,10,6)`、内层 `Table(3,8,30)`、txt `(1,6)` / cmb `(1,7)`。compatHost 隐藏，尺寸不影响左栏视觉。
 2. 若坚持紧凑：3 行 TLP，第 0 行留 30px 空 spacer，txt `(1,1)` / cmb `(1,2)`，`Height>=130`。
 
-**reparent 待 team-lead 拍板**：PRD 第 98 行要求打开浮层时重挂载 compatHost、关闭时移回；我仍推荐永久宿主 + 只切 `Visible`（断言同样全过、无句柄重建/闪烁）。若照 PRD 做，必须只重挂载最外层 compatHost，内部层级原封不动。
+**reparent 方案待定**：PRD 第 98 行要求打开浮层时重挂载 compatHost、关闭时移回；本文仍推荐永久宿主 + 只切 `Visible`（断言同样全过、无句柄重建/闪烁）。若照 PRD 做，必须只重挂载最外层 compatHost，内部层级原封不动。
 
 其余 PRD 决策无冲突：分组标题与折叠态 ✅、settings.json P1 且只存 Cookie 路径/浏览器名不存 Cookie 值 ✅、「切换颜色」P2 显示禁用 ✅、覆盖式 Panel ✅、开始/停止双态按钮 ✅。

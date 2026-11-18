@@ -1,6 +1,6 @@
 # M3U8 批量下载器 · UI 重构增量 PRD（定稿 v1.0）
 
-> 定稿说明：本文已吸纳 team-lead 对原第 9 节 5 个问题的全部拍板结论，并修正真实任务数据基线（18 条 / 11091 字节）。未提及的行为一律保持现状。
+> 定稿说明：本文已吸纳对原第 9 节 5 个问题的全部结论，并修正真实任务数据基线（18 条 / 11091 字节）。未提及的行为一律保持现状。
 
 ## 0. 项目信息
 
@@ -88,7 +88,7 @@ MainForm
 └─ SettingsOverlay（覆盖式 Panel，Dock=Fill，默认隐藏）——【已拍板】采用覆盖式 Panel
    ├─ 分组 A「路径与依赖」：保存目录（txtWorkDir + 浏览）、RE 可执行（txtExe + 浏览 + 自动探测按钮）
    ├─ 分组 B「Cookie 来源」：Cookie 文件（txtCookieFile + 浏览）、浏览器 Cookie（cmbCookieBrowser + 提示「读取前请关闭浏览器」）
-   │  ※ 【架构师修订】SettingsOverlay 本身即真实控件**唯一永久宿主**；compatHost 从构造起常驻其中，开关浮层只切 `SettingsOverlay.Visible`，不 reparent、不镜像、无状态同步
+   │  ※ 【修订】SettingsOverlay 本身即真实控件**唯一永久宿主**；compatHost 从构造起常驻其中，开关浮层只切 `SettingsOverlay.Visible`，不 reparent、不镜像、无状态同步
    │  ※ 内部固定为 CardGroupBox("基础选项") → Table(3,8,30) → txtCookieFile@(1,6) / cmb@(1,7)，见第 7.2 节
    ├─ 分组 C「性能」：同时下载数量、下载线程数、重试次数、HTTP 超时、限速（5 个数字框，2 列网格）
    │  ※ 4 个 NUD 所在的 CardGroupBox("性能设置") 必须与分组 B 的 GroupBox 同父且位于其下方
@@ -97,7 +97,7 @@ MainForm
    └─ 底部：关闭按钮 + 弱化文字「配置仅影响本次及后续新任务」+【P1，可延后】保存到独立 settings.json 的入口
 ```
 
-**配置控件宿主（唯一，架构师修订 + team-lead 拍板）**：SettingsOverlay 自身就是真实配置控件的**永久宿主**；`compatHost` 从构造起常驻其中，`CardGroupBox("基础选项")` 与 `CardGroupBox("性能设置")` 是 `compatHost` 内的兄弟节点，构造期即给出**显式尺寸**。打开/关闭浮层**只切换 `SettingsOverlay.Visible`**，不 reparent、不做隐藏兼容层、不做双份镜像控件（双份状态必有 bug）。精确父子树与坐标约束见第 7.2 节。
+**配置控件宿主（唯一，已定稿）**：SettingsOverlay 自身就是真实配置控件的**永久宿主**；`compatHost` 从构造起常驻其中，`CardGroupBox("基础选项")` 与 `CardGroupBox("性能设置")` 是 `compatHost` 内的兄弟节点，构造期即给出**显式尺寸**。打开/关闭浮层**只切换 `SettingsOverlay.Visible`**，不 reparent、不做隐藏兼容层、不做双份镜像控件（双份状态必有 bug）。精确父子树与坐标约束见第 7.2 节。
 
 ---
 
@@ -344,14 +344,14 @@ MainForm
 | 4 | LayoutTests 精确父子树与几何数值 | 见 7.2 硬约束图；`CardGroupBox` 必须继承 GroupBox、`Text` 精确；`Table(3,8,30)` 与 `(1,6)/(1,7)` 照抄；`cmbCookieBrowser.Items` 保留 "(不使用)" + 9 个浏览器；`(不使用)` → `Opt.CookieBrowser == ""` |
 | 5 | Opt 保持 record | 测试用 `with` 表达式；保留全部属性名（尤其 WorkDir/UseYtDlp/ConcurrentDownload/MaxThreads/RetryCount/Timeout/LimitSpeed/NoSystemProxy/NoMerge/CookieFile/CookieBrowser），隐藏选项的属性也保留 |
 | 6 | tasks.json 格式不变 | camelCase、`WriteIndented=true`、`UnsafeRelaxedJsonEscaping`；字段集合不变；与旧 Python 版双向可读；**不新增字段**；设置项只能进独立 settings.json（见 5.3） |
-| 7 | **真实数据隔离（最高优先级）** | 任何实例化 `MainForm` 的验证代码，必须**先**把 `APPDATA` 指向临时目录并创建 `NM3U8DL_GUI` 子目录；用户真实数据在 `%APPDATA%\NM3U8DL_GUI\tasks.json`（**18 条任务，11091 字节**，含请求头），禁止写入/重命名/覆盖；安全基线快照已由 team-lead 保存 |
+| 7 | **真实数据隔离（最高优先级）** | 任何实例化 `MainForm` 的验证代码，必须**先**把 `APPDATA` 指向临时目录并创建 `NM3U8DL_GUI` 子目录；用户真实数据在 `%APPDATA%\NM3U8DL_GUI\tasks.json`（**18 条任务，11091 字节**，含请求头），禁止写入/重命名/覆盖；安全基线快照已另行留存 |
 | 8 | 无新增依赖 | 只用 .NET 10 BCL + System.Drawing；保持自包含单文件发布 |
 
-### 7.2 硬约束图：Cookie / 性能控件的精确父子树（工程师照此实现）
+### 7.2 硬约束图：Cookie / 性能控件的精确父子树（实现须严格遵循）
 
-team-lead 核实 `Tests.cs:361-387` 的断言比初版描述更严格；software-architect 用 WinForms 探针进一步实测确认 **`area.Contains(ctl.Bounds)` 是坐标系错配的脆弱断言**，必须靠"照抄现有几何数值"来兼容，不能靠"控件可见就算了"。以下为**硬约束**，工程师照此实现。**team-lead 已拍板：断言 B 采用方案 ①（照抄现状布局）；不 reparent——`compatHost` 及其内部层级全程不移动，仅由 `SettingsOverlay.Visible` 控制显隐。**
+经核实，`Tests.cs:361-387` 的断言比初版描述更严格；WinForms 探针进一步实测确认 **`area.Contains(ctl.Bounds)` 是坐标系错配的脆弱断言**，必须靠"照抄现有几何数值"来兼容，不能靠"控件可见就算了"。以下为**硬约束**，实现须严格遵循。**定稿：断言 B 采用方案 ①（照抄现状布局）；不 reparent——`compatHost` 及其内部层级全程不移动，仅由 `SettingsOverlay.Visible` 控制显隐。**
 
-**为什么必须照抄（架构师 .NET 10 WinForms 探针实测）**：
+**为什么必须照抄（.NET 10 WinForms 探针实测）**：
 
 | 配置 | `optGroup.DisplayRectangle` | `txtCookie.Bounds` | 断言 B |
 |---|---|---|---|
@@ -364,7 +364,7 @@ team-lead 核实 `Tests.cs:361-387` 的断言比初版描述更严格；software
 
 ```
 SettingsOverlay : Panel                ← 真实控件唯一永久宿主；默认 Visible=false，但构造期已 CreateControl()+PerformLayout()
-│                                      ← 【team-lead 拍板】不 reparent：compatHost 及全部内部层级全程不移动，仅切 Overlay.Visible
+│                                      ← 【定稿】不 reparent：compatHost 及全部内部层级全程不移动，仅切 Overlay.Visible
 │                                      ← 隐藏容器中的 Dock 不会自动拉伸：探针实测 GroupBox 宽度停在默认 200，故必须显式设尺寸
 └─ compatHost : Panel / TableLayoutPanel（垂直堆叠，顺序固定；全程常驻 SettingsOverlay，不重挂载）
    │
@@ -393,7 +393,7 @@ SettingsOverlay : Panel                ← 真实控件唯一永久宿主；默�
 | C | `root.Controls.OfType<GroupBox>().Any(g => g.Text=="性能设置")`（Tests.cs:379-380） | `perfGroup` 是 `compatHost` 的**直接**子节点，`Text` 精确为 `性能设置`；`CardGroupBox` 继承 GroupBox 才能被 `OfType<GroupBox>()` 找到 |
 | D | `perf.Top - optGroup.Bottom >= 0`（Tests.cs:384） | `compatHost` 垂直堆叠：先 `optGroup` 后 `perfGroup`；显式 Top/Height，不依赖隐藏态的 Dock 拉伸 |
 
-**不 reparent（team-lead 拍板）**：`compatHost` 从构造起就常驻 `SettingsOverlay`，打开/关闭浮层**只切换 `SettingsOverlay.Visible`**，不得 `Controls.Add/Remove` 或重设 `Parent`——避免句柄重建、闪烁与状态不同步。上述 A/B/C/D 断言在隐藏态也须成立（故必须构造期 `CreateControl()+PerformLayout()` 并给显式尺寸）。
+**不 reparent（定稿）**：`compatHost` 从构造起就常驻 `SettingsOverlay`，打开/关闭浮层**只切换 `SettingsOverlay.Visible`**，不得 `Controls.Add/Remove` 或重设 `Parent`——避免句柄重建、闪烁与状态不同步。上述 A/B/C/D 断言在隐藏态也须成立（故必须构造期 `CreateControl()+PerformLayout()` 并给显式尺寸）。
 
 **工程实施顺序建议**：先原样搭出上述 8 行 TLP 骨架并单跑 LayoutTests 段确认 199 项中的布局断言全绿，再逐步替换视觉皮肤；每替换一层重跑一次，避免最后一次性排查坐标问题。
 
@@ -416,7 +416,7 @@ SettingsOverlay : Panel                ← 真实控件唯一永久宿主；默�
 
 ### 8.2 功能与视觉验收清单
 
-- [ ] 199/199 测试通过（隔离 APPDATA 下执行），失败 0；**工程师须先在修改前跑一次全量基线并记录**，因架构师沙箱策略拦截了测试执行，当前无第三方复测基线。
+- [ ] 199/199 测试通过（隔离 APPDATA 下执行），失败 0；**修改前须先跑一次全量基线并记录**，因验证环境安全策略拦截了测试执行，当前无第三方复测基线。
 - [ ] 布局断言专项通过：`txtCookieFile` 位于 `(1,6)`、`cmbCookieBrowser` 位于 `(1,7)` 的 `Table(3,8,30)` 内；`CardGroupBox("基础选项")` 的 `Padding=(10,2,10,6)`、`Height=272`；`CardGroupBox("性能设置")` 同为 `compatHost` 子节点且在其下方；浮层隐藏态下两者仍有显式尺寸（非默认 200 宽）。
 - [ ] 浮层开关只切 `SettingsOverlay.Visible`：全程未对 `compatHost` 及其子控件调用 `Controls.Add/Remove` 或重设 `Parent`；打开-关闭-再打开 3 次后断言 A–D 仍全绿、无控件闪烁。
 - [ ] 4 张截图验收：①空态 ②18 条任务满态 ③运行中（含进度与日志）④设置浮层展开。分辨率 1280×800、100% DPI。
@@ -450,13 +450,13 @@ SettingsOverlay : Panel                ← 真实控件唯一永久宿主；默�
 
 | # | 议题 | 拍板结论 | 落实章节 |
 |---|---|---|---|
-| 1 | RE 高级选项口径 | 采纳 PM 建议。标题改为「RE 执行路径选项（含 yt-dlp 失败自动兜底）」，默认折叠。理由：Engine.cs:517-525 兜底会用同一份 Opt 调 `ReAsync`，这些选项确实可达 | 第 2、5.1、5.2-Q1、8.2 节 |
-| 2 | 设置浮层形态 | 采纳**覆盖式 Panel**。断言比初版更严格：必须保持 `TextBox → 容器 → GroupBox` 两层结构、GroupBox.DisplayRectangle 完整包含两个 Cookie 控件 Bounds、同级须有 `Text=="性能设置"` 的 GroupBox 且 `perf.Top >= optGroup.Bottom`。按第 7.2 节硬约束图实现。**架构师探针 + team-lead 追加拍板**：方案 ① 照抄现状布局（`Padding=(10,2,10,6)`、`Height=272`、`Table(3,8,30)`、txt(1,6)/cmb(1,7)），严禁用 2 行 TLP + 大 Padding（常量积恒 False）；不 reparent——compatHost 全程常驻，只切 `SettingsOverlay.Visible` | 第 2、4、7.1、7.2、8.2、8.3 节 |
+| 1 | RE 高级选项口径 | 采纳建议。标题改为「RE 执行路径选项（含 yt-dlp 失败自动兜底）」，默认折叠。理由：Engine.cs:517-525 兜底会用同一份 Opt 调 `ReAsync`，这些选项确实可达 | 第 2、5.1、5.2-Q1、8.2 节 |
+| 2 | 设置浮层形态 | 采纳**覆盖式 Panel**。断言比初版更严格：必须保持 `TextBox → 容器 → GroupBox` 两层结构、GroupBox.DisplayRectangle 完整包含两个 Cookie 控件 Bounds、同级须有 `Text=="性能设置"` 的 GroupBox 且 `perf.Top >= optGroup.Bottom`。按第 7.2 节硬约束图实现。**探针实测后的追加结论**：方案 ① 照抄现状布局（`Padding=(10,2,10,6)`、`Height=272`、`Table(3,8,30)`、txt(1,6)/cmb(1,7)），严禁用 2 行 TLP + 大 Padding（常量积恒 False）；不 reparent——compatHost 全程常驻，只切 `SettingsOverlay.Visible` | 第 2、4、7.1、7.2、8.2、8.3 节 |
 | 3 | 左栏待处理列表 | **保留**只读摘要 + 点击联动右栏。理由：参考图本身就有「待处理 0 个」列表区，去掉反而不像 | 第 2、6-流程 3、8.2 节 |
 | 4 | 「切换颜色」按钮 | **P2 占位但显示**：禁用态 + tooltip「即将推出」，不做深浅主题。理由：参考图右上角有该按钮，视觉一致性需要它存在 | 第 1-非目标、2、3.4、8.2 节 |
 | 5 | settings.json | **允许新增独立文件，不碰 tasks.json 结构**。优先级 **P1**（工期紧可延后）。边界：只存引擎选择、目录、并发数、5 个主开关、Cookie 来源、性能参数、RE 执行路径选项；**绝不存 Cookie 值本身（只存文件路径）**，绝不写入 tasks.json | 第 1-非目标、2、5.3、7.1-约束 6、8.2、8.3 节 |
 
-**数据修正**：全文用户真实任务基线由「7 条」修正为 **18 条 / 11091 字节**（含请求头），安全基线快照已由 team-lead 保存。涉及第 1 节目标 3、第 7.1 节约束 7、第 8.2 节验收。
+**数据修正**：全文用户真实任务基线由「7 条」修正为 **18 条 / 11091 字节**（含请求头），安全基线快照已另行留存。涉及第 1 节目标 3、第 7.1 节约束 7、第 8.2 节验收。
 
 ---
 

@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace M3U8DL;
 
 /// <summary>
-/// MainForm 的独立设置持久化部分（PRD 5.3 / team-lead S6）。
+/// MainForm 的独立设置持久化部分（PRD 5.3，实施步骤 S6）。
 /// 只写 %APPDATA%\NM3U8DL_GUI\settings.json；绝不触碰 tasks.json 结构/字段，
 /// 绝不保存 Cookie 值本身（只存文件路径或浏览器名）。任何失败都吞掉并降级为内存态，不阻断主流程。
 /// </summary>
@@ -146,7 +146,7 @@ internal sealed partial class MainForm : Form
         nud.Value = Math.Max(nud.Minimum, Math.Min(nud.Maximum, v));
     }
 
-    /// <summary>默认保存目录：UserProfile/Downloads（team-lead 清理硬编码路径裁定）。</summary>
+    /// <summary>默认保存目录：UserProfile/Downloads（硬编码路径清理后的约定）。</summary>
     static string DefaultWorkDir()
     {
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
