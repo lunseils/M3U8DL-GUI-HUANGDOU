@@ -1,5 +1,7 @@
 # M3U8DL-GUI-HUANGDOU
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 基于 **.NET 10 + WinForms** 的 HLS 批量下载器图形界面，封装 [`N_m3u8DL-RE`](https://github.com/nilaoda/N_m3u8DL-RE) 与 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) 两个下载引擎，把命令行工具的常用能力收进一个卡片式桌面程序里。
 
 ![主界面](screenshots/V21_02_main.png)
@@ -114,6 +116,8 @@ FAKE_EXE="../Fake/publish/FakeDownloader.exe" ./bin/Debug/net10.0-windows/M3U8DL
 
 ## 许可证
 
-本仓库为应用程序源码，暂未声明开源许可证。
+[MIT](LICENSE) © 2026 lunseils
+
+即你可以自由使用、修改、分发、商用本项目代码，只需保留版权声明与许可声明。
 
 调用的第三方工具各自遵循其原始许可：`N_m3u8DL-RE`（MIT）、`yt-dlp`（Unlicense）、`FFmpeg`（LGPL/GPL，取决于构建配置）。使用时请遵守目标站点的服务条款与当地法律法规。

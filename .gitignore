@@ -13,6 +13,7 @@
 !/.gitattributes
 !/.editorconfig
 !/README.md
+!/LICENSE
 !/M3U8DL.sln
 !/M3U8DL/
 !/M3U8DL.Tests/
