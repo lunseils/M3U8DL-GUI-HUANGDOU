@@ -62,19 +62,6 @@ jobs:
         shell: pwsh
         run: dotnet build M3U8DL.Tests/M3U8DL.Tests.csproj -c Release --nologo
 
-      # runner 的虚拟屏幕默认只有 1024×768，主窗口 1280 宽会被压到屏幕宽，
-      # 界面布局断言（工具栏按钮流不得压住「开始下载」）在 1028 宽度下必然误报。
-      # 这个 helper 是 runner 自带的，个别镜像没有，缺失时忽略即可。
-      - name: 调整虚拟屏幕分辨率
-        shell: pwsh
-        run: |
-          try {
-            Set-DisplayResolution -Width 1920 -Height 1080 -ErrorAction Stop
-            Write-Host '已设置为 1920×1080'
-          } catch {
-            Write-Host "未能调整分辨率，继续：$_"
-          }
-
       # 自建断言框架，编译成控制台程序直接跑；失败时非零退出码
       - name: 运行全量回归测试
         shell: pwsh

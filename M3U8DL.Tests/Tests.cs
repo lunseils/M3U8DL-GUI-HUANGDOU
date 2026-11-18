@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 
@@ -467,6 +468,7 @@ internal static class Tests
             using var f = new MainForm();
             f.Show();
             Application.DoEvents();
+            ForceDesignSize(f);
 
             var txtCookie = (TextBox)GetField(f, "txtCookieFile");
             var cmbBrowser = (ComboBox)GetField(f, "cmbCookieBrowser");
@@ -1614,11 +1616,38 @@ internal static class Tests
         Call(f, "CopySelection");
     }
 
+    // ============================================================
+    // 窗口尺寸
+    // ============================================================
+    [DllImport("user32.dll", SetLastError = true)]
+    static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+                                    int X, int Y, int cx, int cy, uint uFlags);
+
+    const uint SWP_NOZORDER = 0x0004;
+    const uint SWP_NOACTIVATE = 0x0010;
+
+    /// <summary>
+    /// 把窗口拉到设计尺寸。
+    /// Form.Size 最终走 SetBoundsCore，会被 SystemInformation.MaxWindowTrackSize（≈ 屏幕
+    /// 工作区）夹住；GitHub runner 的虚拟屏幕只有 1024×768，1280 宽的主窗口会被压到 1028，
+    /// 「工具栏按钮流不越界」这类按设计宽度写的断言就永远测不到真实宽度。
+    /// 直接调 Win32 SetWindowPos，跳过 WinForms 那层夹取。
+    /// </summary>
+    static void ForceDesignSize(Form f, int width = 1280, int height = 800)
+    {
+        if (f.ClientSize.Width >= width) return;
+        var frameW = f.Width - f.ClientSize.Width;
+        var frameH = f.Height - f.ClientSize.Height;
+        SetWindowPos(f.Handle, IntPtr.Zero, 0, 0, width + frameW, height + frameH,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+        Application.DoEvents();
+        var scr = Screen.PrimaryScreen!.Bounds;
+        Console.WriteLine($"[环境] 屏幕 {scr.Width}×{scr.Height}，窗口拉到 client={f.ClientSize}");
+    }
+
     static List<DownloadTask> Queue(MainForm f) =>
         (List<DownloadTask>)GetField(f, "queue");
-
     static List<string> Statuses(MainForm f) => Queue(f).Select(t => t.Status).ToList();
-
     static List<double> Progress(MainForm f)
     {
         var grid = (DataGridView)GetField(f, "grid");
