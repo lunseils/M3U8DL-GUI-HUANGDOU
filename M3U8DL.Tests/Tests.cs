@@ -854,7 +854,9 @@ internal static class Tests
                 flow!.PerformLayout();
                 Check("按钮流未侵入主按钮区域",
                       flow.Right <= startBtn.Parent!.Left,
-                      $"flowRight={flow.Right} startLeft={startBtn.Parent.Left}");
+                      $"flowRight={flow.Right} startLeft={startBtn.Parent.Left} " +
+                      $"toolBar={bar.Width} client={f.ClientSize.Width} dpi={f.DeviceDpi} " +
+                      $"screen={Screen.PrimaryScreen!.Bounds.Width}");
 
                 var host = startBtn.Parent!;
                 Check("开始下载贴在宿主面板右侧且不越界",
