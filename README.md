@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-基于 **.NET 10 + WinForms** 的 HLS 批量下载器图形界面，封装 [`N_m3u8DL-RE`](https://github.com/nilaoda/N_m3u8DL-RE) 与 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) 两个下载引擎，把命令行工具的常用能力收进一个卡片式桌面程序里。
+本人完全不懂编程，本程序由AI基于 **.NET 10 + WinForms** 的 HLS 批量下载器图形界面，封装 [`N_m3u8DL-RE`](https://github.com/nilaoda/N_m3u8DL-RE) 与 [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) 两个下载引擎，把命令行工具的常用能力收进一个卡片式桌面程序里。
 
 ![主界面](screenshots/V21_02_main.png)
 
