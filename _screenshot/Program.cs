@@ -14,11 +14,23 @@ internal static class ShotProgram
 {
     static string outDir = "";
 
+    /// <summary>
+    /// 截图输出目录：从 exe 所在目录逐级向上找到含 M3U8DL.sln 的仓库根，落到其下的 screenshots。
+    /// 这里原先写死了绝对路径，项目一换目录就会把图拍到不存在的位置。
+    /// </summary>
+    static string ResolveOutDir()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+            if (File.Exists(Path.Combine(dir.FullName, "M3U8DL.sln")))
+                return Path.Combine(dir.FullName, "screenshots");
+        return Path.Combine(AppContext.BaseDirectory, "screenshots");
+    }
+
     [STAThread]
     private static int Main()
     {
         ApplicationConfiguration.Initialize();
-        outDir = @"D:\Program Files\aria2-1.37.0-win-64bit-build1\screenshots";
+        outDir = ResolveOutDir();
         Directory.CreateDirectory(outDir);
 
         // 隔离 APPDATA：绝不触碰用户真实任务库
