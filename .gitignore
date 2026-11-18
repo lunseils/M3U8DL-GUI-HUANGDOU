@@ -12,6 +12,7 @@
 !/.gitignore
 !/.gitattributes
 !/.editorconfig
+!/.github/
 !/README.md
 !/LICENSE
 !/M3U8DL.sln

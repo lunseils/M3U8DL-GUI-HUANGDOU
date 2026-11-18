@@ -79,6 +79,29 @@ dotnet build
 FAKE_EXE="../Fake/publish/FakeDownloader.exe" ./bin/Debug/net10.0-windows/M3U8DL.Tests.exe
 ```
 
+## 自动构建与发版
+
+仓库带了一条 GitHub Actions 流水线（`.github/workflows/build.yml`），不需要本地装任何环境：
+
+| 触发动作 | 会发生什么 |
+|---|---|
+| 推送到 `main` | 编译四个项目 → 跑全量回归测试 → 版本号补丁位 +1 → 自动发一个 Release |
+| 推送 `v*` 标签（如 `v1.2.0`） | 同上，但版本号改用标签名，用于发正式版 |
+| 对 `main` 提 PR | 只编译 + 跑测试，不发版 |
+| 手动触发（Actions 页面 Run workflow） | 走 `main` 的自动递增逻辑 |
+
+每次发版会挂三个文件：
+
+| 文件 | 内容 |
+|---|---|
+| `M3U8DL.exe` | 自包含单文件，双击即用，不要求目标机安装 .NET |
+| `M3U8DL-<版本>-win-x64.zip` | 同上，附 `README.md` 与 `LICENSE` |
+| `SHA256SUMS.txt` | 两个产物的 SHA-256，可用 `certutil -hashfile 文件名 SHA256` 核对 |
+
+版本号取自历史 Release 中最大的语义化版本，补丁位 +1（首次为 `1.0.0`）。回归测试不通过时流水线直接失败，不会产出 Release。
+
+> 只想在打标签时发版、不想每次 push 都出包？把工作流里 `on.push.branches` 那两行删掉即可，其余逻辑不变。
+
 ## 目录结构
 
 | 路径 | 说明 |
@@ -91,6 +114,7 @@ FAKE_EXE="../Fake/publish/FakeDownloader.exe" ./bin/Debug/net10.0-windows/M3U8DL
 | `Fake/` | 假下载引擎，供测试注入各种失败场景 |
 | `_screenshot/` | 无人值守截图工具，`--shot` 模式下渲染各界面并落盘 |
 | `docs/` | 架构审查与重构设计记录 |
+| `.github/workflows/build.yml` | GitHub Actions：编译、回归测试、自动发版 |
 
 ## 下载加速
 
