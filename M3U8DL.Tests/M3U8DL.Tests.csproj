@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>M3U8DL.Tests</AssemblyName>
+    <RootNamespace>M3U8DL.Tests</RootNamespace>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Tests.cs" />
+    <Compile Include="QaRegression.cs" />
+    <Compile Include="RegressionAdditions.cs" />
+    <Compile Include="..\M3U8DL\Core.cs" />
+    <Compile Include="..\M3U8DL\Engine.cs" />
+    <Compile Include="..\M3U8DL\Ui.cs" />
+    <Compile Include="..\M3U8DL\MainForm.cs" />
+    <Compile Include="..\M3U8DL\MainForm.Layout.cs" />
+    <Compile Include="..\M3U8DL\MainForm.Queue.cs" />
+    <Compile Include="..\M3U8DL\MainForm.Download.cs" />
+    <Compile Include="..\M3U8DL\MainForm.Persistence.cs" />
+    <Compile Include="..\M3U8DL\MainForm.Settings.cs" />
+    <Compile Include="..\M3U8DL\Controls\CardPanel.cs" />
+    <Compile Include="..\M3U8DL\Controls\CardGroupBox.cs" />
+    <Compile Include="..\M3U8DL\Controls\ShadowHost.cs" />
+    <Compile Include="..\M3U8DL\Controls\ToggleSwitch.cs" />
+    <Compile Include="..\M3U8DL\Controls\BufferedGrid.cs" />
+    <Compile Include="..\M3U8DL\Controls\BadgeLabel.cs" />
+    <Compile Include="..\M3U8DL\Controls\RedrawPanel.cs" />
+  </ItemGroup>
+
+</Project>

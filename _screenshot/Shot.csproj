@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>Shot</AssemblyName>
+    <RootNamespace>M3U8DL</RootNamespace>
+    <ApplicationHighDpiMode>DpiUnaware</ApplicationHighDpiMode>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <!-- 通配引用产品源码，只需排除入口与构建产物；新增控件文件不必再手工同步 -->
+    <Compile Include="..\M3U8DL\**\*.cs"
+             Exclude="..\M3U8DL\Program.cs;..\M3U8DL\obj\**;..\M3U8DL\bin\**;..\M3U8DL\publish\**;..\M3U8DL\backup\**" />
+  </ItemGroup>
+</Project>

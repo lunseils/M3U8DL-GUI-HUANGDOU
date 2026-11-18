@@ -1,0 +1,11 @@
+# 默认按文本处理，检出时统一 CRLF（本项目仅面向 Windows）
+* text=auto eol=crlf
+
+*.cs   text diff=csharp
+*.csproj text
+*.sln  text eol=crlf
+*.md   text eol=lf
+
+*.png  binary
+*.ico  binary
+*.exe  binary
