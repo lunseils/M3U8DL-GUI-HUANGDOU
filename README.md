@@ -67,7 +67,7 @@ dotnet publish M3U8DL/M3U8DL.csproj -c Release -r win-x64 --self-contained true 
 
 ## 测试
 
-测试用自建的轻量断言框架（不依赖 xUnit），编译成控制台程序直接跑，覆盖引擎命令构造、任务解析、队列状态机、持久化与 UI 交互，共 **367 条断言**：
+测试用自建的轻量断言框架（不依赖 xUnit），编译成控制台程序直接跑，覆盖引擎命令构造、任务解析、队列状态机、持久化与 UI 交互，共 **384 条断言**：
 
 ```bash
 # FakeDownloader 是一个按 FAKE_MODE 环境变量模拟各种下载结局的假引擎
